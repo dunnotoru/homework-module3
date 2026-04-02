@@ -6,7 +6,7 @@
 
 void parent_process_args(int argc, char **argv) {
   pid_t pid = getpid();
-  for (int i = 1; i < argc; i++) {
+  for (int i = 1; i < argc; i+=2) {
     char *endptr = NULL;
     float value = strtof(argv[i], &endptr);
     if (*endptr == '\0') {
@@ -19,9 +19,9 @@ void parent_process_args(int argc, char **argv) {
 void child_process_args(int argc, char **argv) {
   pid_t pid = getpid();
   pid_t ppid = getppid();
-  for (int i = 1; i < argc; i++) {
+  for (int i = 2; i < argc; i+=2) {
     char *endptr = NULL;
-    float value = strtof(argv[i], &endptr);
+    strtof(argv[i], &endptr);
     if (*endptr != '\0') {
       printf("CHILD  [%d] of [%d]:  ", pid, ppid);
       printf("Arg[%d] Is not number: %s\n",i, argv[i]);

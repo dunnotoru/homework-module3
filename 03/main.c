@@ -48,7 +48,6 @@ int main() {
   storage = create_storage();
   printf("Книга контактов!\n");
   load_data(storage);
-  int a = 1;
   while (true) {
     size_t i = 0;
     

@@ -39,14 +39,13 @@ void delete_storage(ContactStorage *storage) {
 }
 
 bool load_data(ContactStorage *storage) {
-  int fd = open("datafile", O_RDONLY | O_CREAT);
+  int fd = open("datafile", O_RDONLY | O_CREAT, S_IRUSR | S_IWUSR);
   if (fd == -1) {
     return false;
   }
 
   int retval = -1;
   do {
-    printf("loading\n");
     Contact *stored = calloc(1, sizeof(Contact));
     retval = read(fd, stored, sizeof(Contact));
     if (retval != sizeof(Contact)) {
@@ -75,7 +74,6 @@ bool dump_data(ContactStorage *storage) {
     Contact *contact = it_next(it);
     
     int retval = write(fd, contact, sizeof(Contact));
-    printf("save %d\n", retval);
     if (retval == -1) {
       it_delete(it);
       close(fd);

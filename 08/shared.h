@@ -6,6 +6,7 @@
 
 #define D_FILENAME "resource_file.txt"
 #define D_LINE_MAX 1024
+#define D_PROJ_ID 123123
 
 struct sembuf lock = {0, -1, 0};
 struct sembuf unlock = {0, 1, 0};

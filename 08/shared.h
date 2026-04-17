@@ -8,13 +8,17 @@
 #define D_LINE_MAX 1024
 #define D_PROJ_ID 123123
 
-struct sembuf lock = {0, -1, 0};
-struct sembuf unlock = {0, 1, 0};
+union semun {
+  int val;
+  struct semid_ds *buf;
+  unsigned short *array;
+};
 
-static char *strncpy_s(char *dest, const char *src, size_t n) {
-  char *retval = strncpy(dest, src, n);
-  dest[n - 1] = '\0';
-  return retval;
-}
+struct sembuf lock_res = {0, -1, 0};
+struct sembuf rel_res = {0, 1, 0};
+struct sembuf push[2] = {{1, -1, IPC_NOWAIT}, {2, 1, IPC_NOWAIT}};
+struct sembuf pop[2] = {{1, 1, IPC_NOWAIT}, {2, -1, IPC_NOWAIT}};
+
+char *strncpy_s(char *dest, const char *src, size_t n);
 
 #endif

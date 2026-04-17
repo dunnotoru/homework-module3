@@ -2,11 +2,11 @@ CFLAGS= -Wall -Wextra -g
 
 build: writer reader
 
-reader: reader.c mkdir
-	gcc $(CFLAGS) $< -o build/$@
+reader: reader.c shared.c mkdir
+	gcc $(CFLAGS) reader.c shared.c -o build/$@
 
-writer: writer.c mkdir
-	gcc $(CFLAGS) $< -o build/$@
+writer: writer.c shared.c mkdir
+	gcc $(CFLAGS) writer.c shared.c -o build/$@
 
 mkdir:
 	mkdir -p build

@@ -1,18 +1,10 @@
-CFLAGS= -Wall -Wextra -g
+CFLAGS=-fsanitize=address -Wall -Werror -g -lrt
 
-build: writer reader
-
-reader: reader.c shared.c mkdir
-	gcc $(CFLAGS) reader.c shared.c -o build/$@
-
-writer: writer.c shared.c mkdir
-	gcc $(CFLAGS) writer.c shared.c -o build/$@
+build: main.c mkdir
+	gcc $(CFLAGS) main.c -o build/app
 
 mkdir:
 	mkdir -p build
 
-run-writer: writer
-	./build/$<
-
-run-reader: reader
-	./build/$<
+run: build
+	./build/app

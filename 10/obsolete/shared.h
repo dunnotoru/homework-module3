@@ -28,6 +28,4 @@ struct sembuf rel_res = {0, 1, 0};
 struct sembuf push[2] = {{1, -1, IPC_NOWAIT}, {2, 1, IPC_NOWAIT}};
 struct sembuf pop[2] = {{1, 1, IPC_NOWAIT}, {2, -1, IPC_NOWAIT}};
 
-char *strncpy_s(char *dest, const char *src, size_t n);
-
 #endif

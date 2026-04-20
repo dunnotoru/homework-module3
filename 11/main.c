@@ -311,7 +311,7 @@ int get_min_max(int numbers[D_LINE_MAX], int size, int *min, int *max) {
 int get_data() {
   if (semop(semid, pop, 2) == -1) {
     if (errno == EAGAIN) {
-      printf("CHILD [%d]: Buffer empty\n", pid);
+      printf("CHILD  [%d]: Buffer empty\n", pid);
     }
 
     return errno == EAGAIN ? 1 : -1;
@@ -325,7 +325,7 @@ int get_data() {
   if (shared->size > 0) {
     get_min_max(shared->numbers, shared->size, &shared->min, &shared->max);
     shared->size = -1;
-    printf("CHILD [%d]: Found min: %d, max: %d\n", pid, shared->min,
+    printf("CHILD  [%d]: Found min: %d, max: %d\n", pid, shared->min,
            shared->max);
   }
 

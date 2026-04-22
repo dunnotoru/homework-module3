@@ -5,6 +5,7 @@
 #include <netinet/ip.h>
 #include <pthread.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -22,7 +23,6 @@ struct writer_thread_args {
 void *recv_thread_func(void *arg) {
   struct writer_thread_args *casted_arg = arg;
   int sockfd = casted_arg->sockfd;
-
   int running = 1;
   while (running) {
     char buffer[D_BUFFER_SIZE] = {0};
@@ -37,7 +37,10 @@ void *recv_thread_func(void *arg) {
       running = 0;
     }
 
-    printf("%s\n", buffer);
+    printf("\033[A");
+    printf("\r\033[K");
+    printf("# %s\n> ", buffer);
+    fflush(stdout);
   }
 
   pthread_exit(NULL);
@@ -82,22 +85,18 @@ int chat_loop(int sockfd, struct sockaddr_in send_addr) {
   return 0;
 }
 
-int server_listen_connection(int sockfd, struct in_addr addr) {
-  struct sockaddr_in server = {
-      .sin_family = AF_INET,
-      .sin_port = htons(D_PORT),
-      .sin_addr.s_addr = INADDR_ANY,
-  };
-
-  if (addr.s_addr == 0) {
-    server.sin_addr = addr;
-    // TODO: change to ptr because -1 or 0 are actual addresses
-  }
-
-  if (bind(sockfd, (struct sockaddr *)&server, sizeof(server)) == -1) {
+int server_listen_connection(int sockfd, struct sockaddr_in listen_addr) {
+  if (bind(sockfd, (struct sockaddr *)&listen_addr, sizeof(listen_addr)) ==
+      -1) {
     perror("Failed to bind address");
     return -1;
   }
+
+  socklen_t size = sizeof(listen_addr);
+  getsockname(sockfd, (struct sockaddr *)&listen_addr, &size);
+
+  printf("Listening address %s:%d\n", inet_ntoa(listen_addr.sin_addr),
+         ntohs(listen_addr.sin_port));
 
   char buffer[D_BUFFER_SIZE] = {0};
   struct sockaddr_in client;
@@ -118,7 +117,7 @@ int server_listen_connection(int sockfd, struct in_addr addr) {
   return chat_loop(sockfd, client);
 }
 
-int server_start(struct in_addr addr) {
+int server_start(struct sockaddr_in addr) {
   int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
     perror("Failed to create socket");
@@ -135,34 +134,34 @@ int server_start(struct in_addr addr) {
   return status;
 }
 
-int client_connect(int sockfd, struct in_addr addr) {
-  struct sockaddr_in client = {
+int client_connect(int sockfd, struct sockaddr_in send_addr) {
+  struct sockaddr_in listen_addr = {
       .sin_family = AF_INET,
       .sin_port = htons(0),
       .sin_addr.s_addr = INADDR_ANY,
   };
 
-  if (bind(sockfd, (struct sockaddr *)&client, sizeof(client)) == -1) {
+  if (bind(sockfd, (struct sockaddr *)&listen_addr, sizeof(listen_addr)) ==
+      -1) {
     perror("Failed to bind address");
     return -1;
   }
 
-  struct sockaddr_in server = {
-      .sin_family = AF_INET,
-      .sin_port = htons(D_PORT),
-      .sin_addr = addr,
-  };
+  printf("Listening address %s:%d\n", inet_ntoa(listen_addr.sin_addr),
+         ntohs(listen_addr.sin_port));
+  printf("Sending to address %s:%d\n", inet_ntoa(send_addr.sin_addr),
+         ntohs(send_addr.sin_port));
 
   struct writer_thread_args thread_arg = {
       .sockfd = sockfd,
   };
 
-  return chat_loop(sockfd, server);
+  return chat_loop(sockfd, send_addr);
 
   return 0;
 }
 
-int client_start(struct in_addr addr) {
+int client_start(struct sockaddr_in addr) {
   int sockfd = socket(PF_INET, SOCK_DGRAM, 0);
   if (sockfd == -1) {
     perror("Failed to create socket");
@@ -185,7 +184,8 @@ void print_usage_error(int argc, char **argv) {
   fprintf(stderr, "  -s\tStart server\n");
   fprintf(stderr, "  -c\tStart client (requires -a key)\n");
   fprintf(stderr, "Options:\n");
-  fprintf(stderr, "  -a\tAddress to listen/connect in x.x.x.x:x format\n");
+  fprintf(stderr, "  -a\tUse address to listen/connect in x.x.x.x format\n");
+  fprintf(stderr, "  -p\tUse port (required for client)\n");
 }
 
 int main(int argc, char **argv) {
@@ -196,25 +196,43 @@ int main(int argc, char **argv) {
   }
 
   bool is_server = c == 's' ? true : false;
+  char ip_str[16] = {0};
+  char port_str[16] = {0};
 
-  struct in_addr addr = {0};
-  c = getopt(argc, argv, "a:");
-  if (c == -1 && is_server) {
-    addr.s_addr = INADDR_ANY;
-  } else if (c == 'a') {
-    if (inet_aton(optarg, &addr) == 0) {
-      fprintf(stderr, "Incorrect ip format\n");
-      return EXIT_FAILURE;
+  struct sockaddr_in addr = {
+      addr.sin_family = AF_INET,
+      addr.sin_addr.s_addr = INADDR_ANY,
+      addr.sin_port = htons(0),
+  };
+
+  do {
+    c = getopt(argc, argv, "a:p:");
+    if (c == 'a') {
+      if (inet_aton(optarg, &addr.sin_addr) == -1) {
+        fprintf(stderr, "Incorrect ip address\n");
+        return EXIT_FAILURE;
+      }
     }
-  } else {
-    print_usage_error(argc, argv);
+
+    if (c == 'p') {
+      char buffer[16];
+      strncpy(buffer, optarg, 16);
+      char *endptr;
+      int port = strtol(buffer, &endptr, 10);
+      if (*endptr != '\0' || port < 0 || port > UINT16_MAX) {
+        fprintf(stderr, "Incorrect port\n");
+        return EXIT_FAILURE;
+      }
+
+      addr.sin_port = htons(port);
+    }
+  } while (c != -1);
+
+  if (is_server == 0 && addr.sin_port == 0) {
+    fprintf(stderr, "Port required for client to connect\n");
     return EXIT_FAILURE;
   }
 
   int status = is_server ? server_start(addr) : client_start(addr);
-  if (status == -1) {
-    return EXIT_FAILURE;
-  }
-
-  return EXIT_SUCCESS;
+  return status == 0 ? EXIT_SUCCESS : EXIT_FAILURE;
 }

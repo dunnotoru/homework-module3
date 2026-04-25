@@ -28,14 +28,11 @@ void *recv_thread_func(void *arg) {
     char buffer[D_BUFFER_SIZE] = {0};
     int bytes_read = recvfrom(sockfd, buffer, D_BUFFER_SIZE, 0, NULL, NULL);
     if (bytes_read == -1) {
-      perror("Zero byres read from socket");
+      perror("Failed to read from socket");
       pthread_exit(NULL);
     }
 
     buffer[bytes_read] = '\0';
-    if (strcmp(buffer, "disconnect") == 0) {
-      running = 0;
-    }
 
     printf("\033[A");
     printf("\r\033[K");
@@ -67,8 +64,9 @@ int chat_loop(int sockfd, struct sockaddr_in send_addr) {
     }
 
     buffer[strcspn(buffer, "\n")] = '\0';
-    if (strcmp(buffer, "disconnect") == 0) {
+    if (strcmp(buffer, "quit") == 0) {
       running = 0;
+      break;
     }
 
     int bytes_sent =

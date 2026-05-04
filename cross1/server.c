@@ -2,7 +2,9 @@
 #include <netinet/in.h>
 #include <netinet/ip.h>
 #include <netinet/udp.h>
+#include <signal.h>
 #include <stdatomic.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -11,8 +13,38 @@
 #include <unistd.h>
 
 #define D_BUFFER_SIZE 4096
+#define CLIENT_CACHE_SIZE 1024
+
+struct Client {
+  struct in_addr ip;
+  in_port_t port;
+  int msg_number;
+};
+
+struct Client client_cache[CLIENT_CACHE_SIZE] = {0};
+size_t cache_size = 0;
 
 int running = 1;
+
+int get_or_add(struct in_addr ip, in_port_t port) {
+  for (size_t i = 0; i < cache_size; i++) {
+    if (ip.s_addr == client_cache[i].ip.s_addr &&
+        port == client_cache[i].port) {
+      return i;
+    }
+  }
+
+  struct Client client = {ip, port, 0};
+  client_cache[cache_size++] = client;
+  return cache_size - 1;
+}
+
+void remove_client(int i) {
+  client_cache[i].msg_number = 0;
+  for (size_t i = i; i < cache_size; i++) {
+    client_cache[i] = client_cache[i + 1];
+  }
+}
 
 int run(int sockfd, struct sockaddr_in listen_addr) {
   struct sockaddr_in dest_addr = {0};
@@ -33,17 +65,28 @@ int run(int sockfd, struct sockaddr_in listen_addr) {
     uint16_t offset = ip_header.ip_hl * 4;
     memcpy(&udp_header, buffer + offset, sizeof(struct udphdr));
 
-    if (udp_header.dest != listen_addr.sin_port) {
+    if (udp_header.dest != listen_addr.sin_port ||
+        udp_header.source == listen_addr.sin_port) {
       continue;
     }
 
-    printf("Received request \n");
+    uint8_t *msg = buffer + ip_header.ip_hl * 4 + sizeof(struct udphdr);
+    printf("Currently %zu clients are cached\n", cache_size);
+    printf("Received request\n");
     printf("From: %s:%d\n", inet_ntoa(ip_header.ip_src),
            ntohs(udp_header.source));
     printf("To: %s:%d\n", inet_ntoa(ip_header.ip_dst), ntohs(udp_header.dest));
     printf("Size: %d\n", bytes_read);
-    printf("Message: %s\n",
-           buffer + ip_header.ip_hl * 4 + sizeof(struct udphdr));
+    printf("Message: %s\n", msg);
+
+    int idx = get_or_add(ip_header.ip_src, udp_header.source);
+    client_cache[idx].msg_number++;
+
+    if (strncmp((char *)msg, "fin", 3) == 0) {
+      printf("Client asks to close connection\n");
+      remove_client(idx);
+      continue;
+    }
 
     uint8_t response_buffer[D_BUFFER_SIZE] = {0};
 
@@ -55,7 +98,8 @@ int run(int sockfd, struct sockaddr_in listen_addr) {
 
     memcpy(response_buffer, &response_udp_header, sizeof(response_udp_header));
     snprintf((char *)(response_buffer + 8), D_BUFFER_SIZE - 20, "%s %d",
-             buffer + ip_header.ip_hl * 4 + sizeof(udp_header), 1235);
+             buffer + ip_header.ip_hl * 4 + sizeof(udp_header),
+             client_cache[idx].msg_number);
 
     dest_addr.sin_addr = ip_header.ip_src;
     int bytes_sent = sendto(sockfd, response_buffer, D_BUFFER_SIZE, 0,
@@ -92,6 +136,7 @@ int main(int argc, char **argv) {
   if (argc == 1) {
     return EXIT_FAILURE;
   }
+
   struct sockaddr_in listen_addr = {0};
   listen_addr.sin_family = AF_INET;
 

@@ -24,7 +24,6 @@ typedef enum {
 
 typedef struct {
   pid_t pid;
-  DriverStatus status;
   int to_driver_pipefd;
   int to_master_pipefd;
 } Driver;
@@ -91,12 +90,15 @@ int driver_routine(int to_driver_pipefd, int to_master_pipefd) {
           return -1;
         }
 
-        printf("DRIVER [%d] %s\n", pid, buffer);
+        // printf("DRIVER [%d] %s\n", pid, buffer);
         char *token = strtok(buffer, ":");
         if (strcmp(token, "status") == 0 || status == BUSY) {
           memset(buffer, 0, sizeof(buffer));
-          snprintf(buffer, sizeof(buffer), "%s",
-                   AVAILABLE ? "Available" : "Busy");
+          if (status == AVAILABLE) {
+            snprintf(buffer, sizeof(buffer), "Available");
+          } else {
+            snprintf(buffer, sizeof(buffer), "Busy %zu", ts.it_value.tv_sec);
+          }
           int bytes_written = write(to_master_pipefd, buffer, sizeof(buffer));
           if (bytes_written == -1) {
             perror("Failed to write to named pipe");
@@ -171,7 +173,7 @@ int create_driver() {
     _exit(status == -1 ? EXIT_FAILURE : EXIT_SUCCESS);
   }
 
-  Driver driver = {pid, AVAILABLE, to_driver_pipefd, to_master_pipefd};
+  Driver driver = {pid, to_driver_pipefd, to_master_pipefd};
   drivers[drivers_count++] = driver;
 
   printf("Created: driver [%d]\n", pid);
@@ -203,9 +205,34 @@ int send_task(pid_t pid, int timer) {
   return 0;
 }
 
-int get_status(pid_t pid) { return 0; }
+int get_status(pid_t pid) {
+  Driver *driver = get_driver_by_pid(pid);
 
-int get_drivers() { return 0; }
+  int bytes_written =
+      write(driver->to_driver_pipefd, "status:", sizeof("status:"));
+  if (bytes_written == -1) {
+    perror("Failed to write to pipe");
+    return -1;
+  }
+
+  char buffer[128] = {0};
+  int bytes_read = read(driver->to_master_pipefd, buffer, sizeof(buffer));
+  if (bytes_read == -1) {
+    perror("Failed to read from pipe");
+    return -1;
+  }
+
+  printf("Response from [%d]: %s\n", pid, buffer);
+  return 0;
+}
+
+int get_drivers() {
+  for (size_t i = 0; i < drivers_count; i++) {
+    get_status(drivers[i].pid);
+  }
+
+  return 0;
+}
 
 int run(const char *command) {
   char buffer[MAX_COMMAND_SIZE] = {0};

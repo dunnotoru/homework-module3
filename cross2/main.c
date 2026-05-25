@@ -1,4 +1,3 @@
-#include <errno.h>
 #include <fcntl.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -16,6 +15,7 @@
 #define MAX_ARGV_SIZE 8192
 #define SPACE_DELIM " \t\f\n\r\v"
 #define MAX_DRIVERS 128
+#define PIPE_BUFFER_SIZE 128
 
 typedef enum {
   AVAILABLE = 0,
@@ -80,7 +80,7 @@ int driver_routine(int to_driver_pipefd, int to_master_pipefd) {
 
     for (int i = 0; i < nfds; i++) {
       if (events[i].data.fd == to_driver_pipefd) {
-        char buffer[128] = {0};
+        char buffer[PIPE_BUFFER_SIZE] = {0};
         int bytes_read = read(to_driver_pipefd, buffer, sizeof(buffer));
         if (bytes_read == -1) {
           fprintf(stderr, "DRIVER [%d]\t", pid);
@@ -215,14 +215,14 @@ int get_status(pid_t pid) {
     return -1;
   }
 
-  char buffer[128] = {0};
-  int bytes_read = read(driver->to_master_pipefd, buffer, sizeof(buffer));
+  char buffer[PIPE_BUFFER_SIZE] = {0};
+  int bytes_read = read(driver->to_master_pipefd, buffer, PIPE_BUFFER_SIZE);
   if (bytes_read == -1) {
     perror("Failed to read from pipe");
     return -1;
   }
 
-  printf("Response from [%d]: %s\n", pid, buffer);
+  printf("DRIVED [%d] Status: %s\n", pid, buffer);
   return 0;
 }
 
@@ -234,17 +234,18 @@ int get_drivers() {
   return 0;
 }
 
-int run(const char *command) {
+int execute(const char *command) {
   char buffer[MAX_COMMAND_SIZE] = {0};
   strncpy(buffer, command, MAX_COMMAND_SIZE);
 
   char *token = strtok(buffer, SPACE_DELIM);
   if (strcmp(token, "create_driver") == 0) {
-    if (strtok(NULL, SPACE_DELIM) == NULL) {
-      return create_driver();
-    } else {
-      return -1;
+    if (strtok(NULL, SPACE_DELIM) != NULL) {
+      fprintf(stderr, "Too many arguments to create_driver\n");
+      return 0;
     }
+    
+    return create_driver();
   }
 
   if (strcmp(token, "send_task") == 0) {
@@ -252,26 +253,26 @@ int run(const char *command) {
     if (token == NULL) {
       fprintf(stderr,
               "Missing argument for send_task, driver pid is required.\n");
-      return -1;
+      return 0;
     }
 
     char *endptr;
     pid_t pid = strtol(token, &endptr, 10);
     if (*endptr != '\0') {
       fprintf(stderr, "Invalid pid.\n");
-      return -1;
+      return 0;
     }
 
     token = strtok(NULL, SPACE_DELIM);
     if (token == NULL) {
       fprintf(stderr, "Missing argument for send_task, timer is required.\n");
-      return -1;
+      return 0;
     }
 
     int timer = strtol(token, &endptr, 10);
     if (*endptr != '\0') {
       fprintf(stderr, "Invalid timer (int).\n");
-      return -1;
+      return 0;
     }
 
     return send_task(pid, timer);
@@ -282,14 +283,14 @@ int run(const char *command) {
     if (token == NULL) {
       fprintf(stderr,
               "Missing argument for get_status, driver pid is required.\n");
-      return -1;
+      return 0;
     }
 
     char *endptr;
     pid_t pid = strtol(token, &endptr, 10);
     if (*endptr != '\0') {
       fprintf(stderr, "Invalid pid.\n");
-      return -1;
+      return 0;
     }
 
     return get_status(pid);
@@ -298,14 +299,16 @@ int run(const char *command) {
   if (strcmp(token, "get_drivers") == 0) {
     token = strtok(NULL, SPACE_DELIM);
     if (token != NULL) {
-      fprintf(stderr, "To many arguments for get_drivers.\n");
-      return -1;
+      fprintf(stderr, "Too many arguments for get_drivers.\n");
+      return 0;
     }
 
     return get_drivers();
   }
 
-  return -1;
+  printf("Unknown command.\n");
+
+  return 0;
 }
 
 int main() {
@@ -329,7 +332,10 @@ int main() {
       return EXIT_SUCCESS;
     }
 
-    run(cmd_buffer);
+    if (execute(cmd_buffer) == -1) {
+      return EXIT_FAILURE;
+    }
+
     memset(cmd_buffer, 0, sizeof(cmd_buffer));
   }
 

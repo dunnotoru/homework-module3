@@ -27,6 +27,11 @@ void do_math(int sockfd) {
       error("Failed to read from socket");
     }
 
+    if (bytes_read == 0) {
+      close(sockfd);
+      return;
+    }
+
     // ставим завершающий ноль в конце строки
     buff[bytes_read] = '\0';
 

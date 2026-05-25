@@ -318,9 +318,8 @@ StatusCode receive_file(Client *client, char buffer[MESSAGE_SIZE],
 
     if (client->file_received >= client->file_size) {
       printf("File with name %s received", client->filename);
+      client->state = FILE_DONE;
     }
-
-    client->state = FILE_DONE;
 
     return STATUS_OK;
   }
